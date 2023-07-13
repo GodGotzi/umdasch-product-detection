@@ -1,3 +1,6 @@
 /target
 /out
-/.vs/product-detection
+/detection/.vs/product-detection
+/detection/.vs/detection
+/detection/.vs/detection
+/detection/out/build
