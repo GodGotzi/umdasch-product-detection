@@ -16,11 +16,11 @@ def is_close_color(color1, color2):
     color1 = [color1[0] + 1, color1[1] + 1, color1[2] + 1]
     color2 = [color2[0] + 1, color2[1] + 1, color2[2] + 1]
     
-    if color1[0] / color2[0] > 0.7 and color1[1] / color2[1] > 0.7 and color1[2] / color2[2] > 0.6:
+    if color1[0] / color2[0] > 0.8 and color1[1] / color2[1] > 0.8 and color1[2] / color2[2] > 0.8:
         return True
     
-    if (color1[0] / color1[1] / color1[2]) / (color2[0] / color2[1] / color2[2]) > 0.6:
-        return True
+    #if (color1[0] / color1[1] / color1[2]) / (color2[0] / color2[1] / color2[2]) > 0.8:
+    #    return True
     
     return False
 
