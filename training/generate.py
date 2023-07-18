@@ -19,7 +19,14 @@ def makePreview(product: prod.Product, camera_node, scene):
     
 def createAnnotationFile(class_id: int, path: str, x, y, w, h):
     f = open(path, "w+")
-    annotation: str = str(class_id) + " " + str(float(x)/float(sys.argv[8])) + " " + str(y/float(sys.argv[8])) + " " + str(float(w)/float(sys.argv[8])) + " " + str(float(h)/float(sys.argv[8]))
+    
+    w = float(w)/float(sys.argv[8])
+    h = float(h)/float(sys.argv[8])
+    
+    x_s = float(x)/float(sys.argv[8])
+    y_s = float(y)/float(sys.argv[8])
+    
+    annotation: str = str(class_id) + " " + str(x_s + 0.5 * w) + " " + str(y_s + 0.5 * h) + " " + str(w) + " " + str(h)
     f.write(annotation)
     f.close()
     
