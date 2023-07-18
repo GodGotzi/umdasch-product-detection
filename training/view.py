@@ -11,7 +11,8 @@ import numpy as np
 
 from scipy.spatial.transform import Rotation
 
-import color as c
+import sys
+
 import random
 
 def camera_pose(scene):
@@ -99,8 +100,8 @@ def generate_obj(source_path: str, destination_path: str, obj_color, scene: Scen
         scene.set_pose(camera_node, camera_pose(scene))
 
     #scene.add(camera, pose=camera_pose(scene))
-    
-    r = pyrender.OffscreenRenderer(2048, 2048)
+    size = int(sys.argv[8])
+    r = pyrender.OffscreenRenderer(size, size)
     color, _ = r.render(scene)
 
     plt.imsave(destination_path, color)
