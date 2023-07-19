@@ -5,10 +5,20 @@ use opencv::videoio::VideoCapture;
 use opencv::highgui::*;
 */
 
+use std::{thread, time::Duration};
+
 use application::ProductDetectionApplication;
+use egui::mutex::Mutex;
+use yolo::Detection;
+use lazy_static::lazy_static;
 
 mod gui;
 mod application;
+mod yolo;
+
+lazy_static! {
+    static ref DETECTION: Mutex<yolo::Detection> = Mutex::new(yolo::Detection::new());
+}
 
 fn main() -> Result<(), eframe::Error> {
     /*
@@ -16,7 +26,6 @@ fn main() -> Result<(), eframe::Error> {
 
     
     loop {
-        let mut frame: Mat = Mat::default();
         
         vid.read(&mut frame).unwrap();
 
@@ -24,6 +33,10 @@ fn main() -> Result<(), eframe::Error> {
         wait_key(5).unwrap();        
     }
     */
+
+    let handle = tokio::spawn(Detection::run(&DETECTION));
+    thread::sleep(Duration::from_millis(5000));
+    DETECTION.lock().reload();
 
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     let options = eframe::NativeOptions {

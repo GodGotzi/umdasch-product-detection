@@ -1,3 +1,8 @@
+pub mod detection;
+pub mod terminal;
+pub mod training;
+pub mod utils;
+
 use egui::RichText;
 use egui_extras::Size;
 use egui_grid::GridBuilder;
@@ -31,6 +36,21 @@ pub fn show_main_panel(app: &mut ProductDetectionApplication, ctx: &egui::Contex
     egui::CentralPanel::default().show(ctx, |_ui| {
         show_training_panel(app, ctx, frame);
         show_terminal_panel(app, ctx, frame);
+
+        /*
+        egui::TopBottomPanel::top("detection-info-panel")
+            .exact_height(20.0)
+            .show(ctx, |ui| {
+                ui.with_layout(
+                    egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                    |ui| {
+                        ui.heading("Detection");
+                    });
+            });
+        */
+
+        utils::with_heading_panel("Detection", ctx);
+
         show_detection_panel(app, ctx, frame);
     });
 
@@ -45,9 +65,9 @@ fn show_training_panel(app: &mut ProductDetectionApplication, ctx: &egui::Contex
         .exact_width(exp)
         .resizable(false)
         .show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Hi")
-            });
+            utils::with_heading("Training", ui);
+
+            training::show(app, ui);
         });
 }
 
@@ -58,9 +78,7 @@ fn show_terminal_panel(app: &mut ProductDetectionApplication, ctx: &egui::Contex
         .exact_height(exp)
         .resizable(false)
         .show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Hi")
-            });
+            terminal::show(app, ui);
         });
 }
 
@@ -71,9 +89,7 @@ fn show_detection_panel(app: &mut ProductDetectionApplication, ctx: &egui::Conte
         .exact_width(exp)
         .resizable(false)
         .show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Hi")
-            });
+            detection::show(app, ui);
         });
 }
 
