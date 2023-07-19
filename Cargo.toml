@@ -15,7 +15,7 @@ clap = { version = "4.0.18", features = ["derive"], optional = true }
 image = { version = "0.24.3", features = ["rgb"] }
 imageproc = "0.23.0"
 indicatif = { version = "0.17.0", optional = true }
-opencv = { version = "0.83.0", default-features = false, features = ["dnn", "imgcodecs", "imgproc"] }
+opencv = "0.83.0"
 shellexpand = {version = "3.0.0", optional = true}
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -23,3 +23,4 @@ tracing = "~0.1"
 tokio ={ version = "1.29.1", features = ["full"] }
 async-recursion = "1.0.4"
 lazy_static = "1.4.0"
+num_cpus = "1.16.0"
