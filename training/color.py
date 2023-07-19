@@ -5,8 +5,8 @@ def random_bg_color(obj_color):
     
     
     while is_close_color(obj_color, bg_color):
-        bg_color[0] = int(1 * 255.0)
-        bg_color[1] = int(1 * 255.0)
+        bg_color[0] = int(random.random() * 255.0)
+        bg_color[1] = int(random.random() * 255.0)
         bg_color[2] = int(1 * 255.0)
     
     return bg_color
