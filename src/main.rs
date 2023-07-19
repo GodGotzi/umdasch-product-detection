@@ -5,6 +5,11 @@ use opencv::videoio::VideoCapture;
 use opencv::highgui::*;
 */
 
+use application::ProductDetectionApplication;
+
+mod gui;
+mod application;
+
 fn main() -> Result<(), eframe::Error> {
     /*
     let mut vid = VideoCapture::new(0, opencv::videoio::CAP_ANY).unwrap();
@@ -24,6 +29,7 @@ fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(1024.0, 1024.0)),
         fullscreen: true,
+        icon_data: Some(load_icon("resource/icon.png")),
         ..Default::default()
     };
 
@@ -32,21 +38,6 @@ fn main() -> Result<(), eframe::Error> {
         options,
         Box::new(|_cc| Box::<ProductDetectionApplication>::default()),
     )
-}
-
-#[derive(Default)]
-struct ProductDetectionApplication {
-
-}
-
-impl eframe::App for ProductDetectionApplication {
-
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("ProductDetectionApplication");
-        });
-    }
-
 }
 
 fn load_icon(path: &str) -> eframe::IconData {
