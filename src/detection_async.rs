@@ -1,15 +1,10 @@
-pub mod data;
-pub mod model;
-
-use std::{time, thread, path::Path};
-
-use opencv::{prelude::*, videoio::VideoCapture};
+use opencv::{prelude::*, videoio::{VideoCapture, VideoCaptureProperties}, imgcodecs::imwrite, core::Vector, imgproc::INTER_LINEAR};
 
 use async_recursion::async_recursion;
 use egui::mutex::Mutex;
 use tokio::sync::watch::*;
 
-use crate::detection_async::model::YoloModel;
+use crate::detection_render::{model::YoloModel, self};
 
 pub struct Detection {
     reload_sender: Option<Sender<bool>>,
@@ -30,29 +25,44 @@ impl Detection {
 
             let mut cam = VideoCapture::new(0, opencv::videoio::CAP_ANY).unwrap();
 
+            cam.set(VideoCaptureProperties::CAP_PROP_FRAME_WIDTH as i32, 3840.0).unwrap();
+            cam.set(VideoCaptureProperties::CAP_PROP_FRAME_HEIGHT as i32, 2080.0).unwrap();
+
             let opened = cam.is_opened().unwrap();
 
             if !opened {
                 panic!("Couldn't find Webcamera!");
             }
 
+            let mut model = YoloModel::new_from_file("yolov5/yolov5s.onnx", (2048, 2048)).unwrap();
+            let mut raw_frame = Mat::default();
 
             while *rx.borrow() {
+                let _result = cam.read(&mut raw_frame).unwrap();
+
+                println!("{}", raw_frame.rows());
+                println!("{}", raw_frame.cols());
+                let cropped_mat = raw_frame.apply(
+                    opencv::core::Range::new(0, raw_frame.rows()).unwrap(), 
+                    opencv::core::Range::new((raw_frame.cols() - raw_frame.rows()) / 2, raw_frame.cols() - ((raw_frame.cols() - raw_frame.rows()) / 2)).unwrap()).unwrap();
 
                 let mut frame = Mat::default();
-                let _result = cam.read(&mut frame).unwrap();
 
-                let mut model = YoloModel::new_from_file("yolov5/yolov5s.onnx", (2048, 2048)).unwrap();
-                
-                let detections = model.detect(frame, 0.05, 0.45).unwrap();
-                
-                println!("{:?}", detections);
+
+                opencv::imgproc::resize(&cropped_mat, &mut frame, opencv::core::Size::new(2048, 2048), 0.0, 0.0, INTER_LINEAR).unwrap();
+                println!("{}", frame.rows());
+                println!("{}", frame.cols());
+
+                let detections = model.detect(frame.clone(), 0.2, 0.45).unwrap();
+
+                match detection_render::render_detections(&mut frame, opencv::core::Size::new(2048, 2048), &detections) {
+                    Ok(_) => println!("Detections drawn"),
+                    Err(err) => println!("Detecions couldn't be drawn! {}", err)
+                }
+
+                let params: Vector<i32> = Vector::new();
+                imwrite("frame.png", &frame, &params).unwrap();
             }
-
-            println!("Waiting 2000ms");
-            let millis = time::Duration::from_millis(2000);
-            thread::sleep(millis);
-           
         });
 
         detection.lock().reload_sender = Some(tx);
@@ -75,7 +85,7 @@ impl Detection {
         }
     }
 
-    pub fn reload(&mut self) {
+    pub fn _reload(&mut self) {
         match self.reload_sender.as_mut().unwrap().send(false) {
             Ok(_) => {
                 println!("Reloaded");

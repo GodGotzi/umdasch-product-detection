@@ -1,10 +1,11 @@
+use std::sync::Mutex;
+
 use crate::gui;
-
-
 
 #[derive(Default)]
 pub struct ProductDetectionApplication {
-    context: ApplicationContext 
+    _context: ApplicationContext,
+    _detection_context: Mutex<DetectionContext>
 }
 
 impl eframe::App for ProductDetectionApplication {
@@ -22,3 +23,9 @@ impl eframe::App for ProductDetectionApplication {
 
 #[derive(Default)]
 pub struct ApplicationContext;
+
+#[derive(Default)]
+pub struct DetectionContext {
+
+}
+

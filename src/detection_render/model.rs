@@ -1,7 +1,7 @@
 
 use opencv::{
-    core::{copy_make_border, Scalar, Vector, BORDER_CONSTANT, CV_32F},
-    dnn::{read_net_from_onnx, read_net_from_onnx_buffer},
+    core::{copy_make_border, Scalar, BORDER_CONSTANT, CV_32F},
+    dnn::read_net_from_onnx,
     prelude::{Mat, MatTraitConst, NetTrait, NetTraitConst},
     Error,
 };
@@ -9,7 +9,7 @@ use tracing::info;
 
 use super::data::*;
 
-/// Calculate Intersection Over Union (IOU) between two bounding boxes.
+
 fn iou(a: &YoloDetection, b: &YoloDetection) -> f32 {
     let area_a = a.area();
     let area_b = b.area();
@@ -23,7 +23,7 @@ fn iou(a: &YoloDetection, b: &YoloDetection) -> f32 {
     intersection / (area_a + area_b - intersection)
 }
 
-/// Non-Maximum Suppression
+
 fn non_max_suppression(detections: Vec<YoloDetection>, nms_threshold: f32) -> Vec<YoloDetection> {
     let mut suppressed_detections: Vec<YoloDetection> = vec![];
     let mut sorted_detections: Vec<YoloDetection> = detections.to_vec();
@@ -47,7 +47,7 @@ fn non_max_suppression(detections: Vec<YoloDetection>, nms_threshold: f32) -> Ve
     suppressed_detections
 }
 
-/// Filter detections by confidence.
+
 fn filter_confidence(detections: Vec<YoloDetection>, min_confidence: f32) -> Vec<YoloDetection> {
     detections
         .into_iter()
@@ -55,24 +55,18 @@ fn filter_confidence(detections: Vec<YoloDetection>, min_confidence: f32) -> Vec
         .collect()
 }
 
-/// Wrapper around OpenCV's DNN module for YOLOv5 inference.
+
 pub struct YoloModel {
     net: opencv::dnn::Net,
     input_size: opencv::core::Size_<i32>,
 }
 
 impl YoloModel {
-    /// Create a new YoloModel from an ONNX file.
+    
     pub fn new_from_file(model_path: &str, input_size: (i32, i32)) -> Result<Self, Error> {
         YoloModel::new_from_network(read_net_from_onnx(model_path)?, input_size)
     }
 
-    /// Create a new YoloModel from an ONNX buffer.
-    pub fn new_from_buffer(buffer: &Vector<u8>, input_size: (i32, i32)) -> Result<Self, Error> {
-        YoloModel::new_from_network(read_net_from_onnx_buffer(buffer)?, input_size)
-    }
-
-    /// Create a new YoloModel from an pre-loaded OpenCV DNN network.
     pub fn new_from_network(
         mut network: opencv::dnn::Net,
         input_size: (i32, i32),
@@ -128,7 +122,7 @@ impl YoloModel {
         Ok((blob, width, height))
     }
 
-    /// Detect objects in an image.
+    // Detect objects in an image.
     fn forward(&mut self, blob: &Mat) -> Result<Mat, Error> {
         let mut output_tensor_blobs: opencv::core::Vector<Mat> = opencv::core::Vector::default();
 
@@ -141,7 +135,7 @@ impl YoloModel {
         output_tensor_blobs.get(0)
     }
 
-    /// Convert the output of the YOLOv5 model to a vector of [YoloDetection].
+    // Convert the output of the YOLOv5 model to a vector of [YoloDetection].
     fn convert_to_detections(&self, outputs: &Mat) -> Result<Vec<YoloDetection>, Error> {
         let rows = *outputs.mat_size().get(1).unwrap();
         let mut detections = Vec::<YoloDetection>::with_capacity(rows as usize);
@@ -197,26 +191,21 @@ impl YoloModel {
         Ok(detections)
     }
 
-    /// Run the model on an image and return the detections.
+    
     pub fn detect(
         &mut self,
         capture: Mat,
         minimum_confidence: f32,
         nms_threshold: f32,
     ) -> Result<YoloImageDetections, Error> {
-        // Load the image
         let (image, image_width, image_height) = self.load_capture(capture)?;
 
-        // Run the model on the image.
         let result = self.forward(&image)?;
 
-        // Convert the result to a Vec of Detections.
         let detections = self.convert_to_detections(&result)?;
 
-        // Filter the detections by confidence.
         let detections = filter_confidence(detections, minimum_confidence);
 
-        // Non-maximum suppression.
         let detections = non_max_suppression(detections, nms_threshold);
 
         Ok(YoloImageDetections {

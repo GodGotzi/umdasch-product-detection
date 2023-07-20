@@ -5,46 +5,23 @@ use opencv::videoio::VideoCapture;
 use opencv::highgui::*;
 */
 
-use std::{thread, time::Duration, path::Path};
-
 use application::ProductDetectionApplication;
 use egui::mutex::Mutex;
-use gui::detection;
-use opencv::{prelude::*, videoio::VideoCapture};
 
 use tokio::runtime;
 use detection_async::Detection;
 use lazy_static::lazy_static;
 
-use crate::detection_async::model::YoloModel;
-
 mod gui;
 mod application;
 mod detection_async;
+mod detection_render;
 
 lazy_static! {
     static ref DETECTION: Mutex<detection_async::Detection> = Mutex::new(detection_async::Detection::new());
 }
 
 fn main() -> Result<(), eframe::Error> {
-    //let mut model = YoloModel::new_from_file("model/net.onnx", (2048, 2048)).unwrap();
-    
-    //let detections = model.detect(frame, 0.05, 0.45).unwrap();
-    
-    //println!("{:?}", detections);
-
-    /*
-    let mut vid = VideoCapture::new(0, opencv::videoio::CAP_ANY).unwrap();
-
-    
-    loop {
-        
-        vid.read(&mut frame).unwrap();
-
-        imshow("frame", &frame).unwrap();
-        wait_key(5).unwrap();        
-    }
-    */
 
     let (num_tokio_worker_threads, max_tokio_blocking_threads) = (num_cpus::get(), 512); // 512 is tokio's current default
     //println!("{}", num_tokio_worker_threads);
