@@ -10,7 +10,7 @@ use tracing::info;
 use super::data::*;
 
 
-fn iou(a: &YoloDetection, b: &YoloDetection) -> f32 {
+fn iou(a: &Detection, b: &Detection) -> f32 {
     let area_a = a.area();
     let area_b = b.area();
 
@@ -24,9 +24,9 @@ fn iou(a: &YoloDetection, b: &YoloDetection) -> f32 {
 }
 
 
-fn non_max_suppression(detections: Vec<YoloDetection>, nms_threshold: f32) -> Vec<YoloDetection> {
-    let mut suppressed_detections: Vec<YoloDetection> = vec![];
-    let mut sorted_detections: Vec<YoloDetection> = detections.to_vec();
+fn non_max_suppression(detections: Vec<Detection>, nms_threshold: f32) -> Vec<Detection> {
+    let mut suppressed_detections: Vec<Detection> = vec![];
+    let mut sorted_detections: Vec<Detection> = detections.to_vec();
 
     sorted_detections.sort_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap());
     sorted_detections.reverse();
@@ -48,7 +48,7 @@ fn non_max_suppression(detections: Vec<YoloDetection>, nms_threshold: f32) -> Ve
 }
 
 
-fn filter_confidence(detections: Vec<YoloDetection>, min_confidence: f32) -> Vec<YoloDetection> {
+fn filter_confidence(detections: Vec<Detection>, min_confidence: f32) -> Vec<Detection> {
     detections
         .into_iter()
         .filter(|dsetection| dsetection.confidence >= min_confidence)
@@ -86,7 +86,7 @@ impl YoloModel {
     }
 
     /// Load an OpenCV image, resize and adjust the color channels.
-    fn load_capture(&self, image: Mat) -> Result<(Mat, u32, u32), Error> { 
+    fn load_capture(&self, image: Mat) -> Result<Mat, Error> { 
 
         let mut boxed_image = Mat::default();
 
@@ -100,9 +100,6 @@ impl YoloModel {
             BORDER_CONSTANT,
             Scalar::new(114f64, 114f64, 114f64, 0f64),
         )?;
-
-        let width = image.cols() as u32;
-        let height = image.rows() as u32;
 
         // println!("scale factor: {:?}", 1.0 / 255.0);
 
@@ -119,7 +116,7 @@ impl YoloModel {
             CV_32F,
         )?;
 
-        Ok((blob, width, height))
+        Ok(blob)
     }
 
     // Detect objects in an image.
@@ -136,9 +133,9 @@ impl YoloModel {
     }
 
     // Convert the output of the YOLOv5 model to a vector of [YoloDetection].
-    fn convert_to_detections(&self, outputs: &Mat) -> Result<Vec<YoloDetection>, Error> {
+    fn convert_to_detections(&self, outputs: &Mat) -> Result<Vec<Detection>, Error> {
         let rows = *outputs.mat_size().get(1).unwrap();
-        let mut detections = Vec::<YoloDetection>::with_capacity(rows as usize);
+        let mut detections = Vec::<Detection>::with_capacity(rows as usize);
 
         for row in 0..rows {
             let cx: &f32 = outputs.at_3d(0, row, 0)?;
@@ -178,7 +175,7 @@ impl YoloModel {
                 }
             }
 
-            detections.push(YoloDetection {
+            detections.push(Detection {
                 x: x_min,
                 y: y_min,
                 width,
@@ -197,8 +194,8 @@ impl YoloModel {
         capture: Mat,
         minimum_confidence: f32,
         nms_threshold: f32,
-    ) -> Result<YoloImageDetections, Error> {
-        let (image, image_width, image_height) = self.load_capture(capture)?;
+    ) -> Result<ImageDetections, Error> {
+        let image = self.load_capture(capture)?;
 
         let result = self.forward(&image)?;
 
@@ -208,10 +205,8 @@ impl YoloModel {
 
         let detections = non_max_suppression(detections, nms_threshold);
 
-        Ok(YoloImageDetections {
-            image_width,
-            image_height,
-            detections,
+        Ok(ImageDetections {
+            detections
         })
     }
 }

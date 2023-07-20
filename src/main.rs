@@ -9,16 +9,15 @@ use application::ProductDetectionApplication;
 use egui::mutex::Mutex;
 
 use tokio::runtime;
-use detection_async::Detection;
+use detection::async_detector::AsyncDetector;
 use lazy_static::lazy_static;
 
 mod gui;
 mod application;
-mod detection_async;
-mod detection_render;
+mod detection;
 
 lazy_static! {
-    static ref DETECTION: Mutex<detection_async::Detection> = Mutex::new(detection_async::Detection::new());
+    static ref DETECTION: Mutex<AsyncDetector> = Mutex::new(AsyncDetector::new());
 }
 
 fn main() -> Result<(), eframe::Error> {
@@ -32,7 +31,14 @@ fn main() -> Result<(), eframe::Error> {
         .max_blocking_threads(max_tokio_blocking_threads)
         .build().unwrap();
 
-    let _handle = rt.spawn(Detection::run(&DETECTION));
+    let handle = AsyncDetector::run(rt, &DETECTION);
+
+    if let Err(err) = handle {
+        panic!("Couldn't create Receiver for DetectionContext {}", err);
+    }
+
+    let (rx_detections, rx_image, _detection_handle) = 
+        handle.unwrap();
 
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     let options = eframe::NativeOptions {
@@ -42,10 +48,12 @@ fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
+    let application = ProductDetectionApplication::new(rx_detections, rx_image);
+
     eframe::run_native(
         "Umdasch - Product Detection Application",
         options,
-        Box::new(|_cc| Box::<ProductDetectionApplication>::default()),
+        Box::new(|_cc| Box::new(application)),
     )
 }
 

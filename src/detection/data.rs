@@ -2,21 +2,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // Representation of an image with it's detections.
-pub struct YoloImageDetections {
-
-    // Image Width in Pixels.
-    pub image_width: u32,
-
-    // Image Height in Pixels.
-    pub image_height: u32,
-
+pub struct ImageDetections {
     // Array of [YoloDetection]s.
-    pub detections: Vec<YoloDetection>,
+    pub detections: Vec<Detection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // Representation of an object detection within an image.
-pub struct YoloDetection {
+pub struct Detection {
     // Top-Left Bounds Coordinate in X-Axis
     pub x: f32,
 
@@ -36,7 +29,7 @@ pub struct YoloDetection {
     pub confidence: f32,
 }
 
-impl YoloDetection {
+impl Detection {
     pub fn area(&self) -> f32 {
         self.width * self.height
     }

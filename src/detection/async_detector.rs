@@ -1,26 +1,49 @@
-use opencv::{prelude::*, videoio::{VideoCapture, VideoCaptureProperties}, imgcodecs::imwrite, core::Vector, imgproc::INTER_LINEAR};
+use opencv::{
+    prelude::*, 
+    videoio::{
+        VideoCapture, 
+        VideoCaptureProperties
+    }, 
+    imgproc::INTER_LINEAR, Error
+};
 
 use async_recursion::async_recursion;
 use egui::mutex::Mutex;
-use tokio::sync::watch::*;
 
-use crate::detection_render::{model::YoloModel, self};
+use tokio::{
+    sync::watch::*, 
+    runtime::Runtime, task::JoinHandle
+};
 
-pub struct Detection {
+use crate::detection::{model::YoloModel, data::ImageDetections};
+
+pub struct AsyncDetector {
     reload_sender: Option<Sender<bool>>,
     enabled: bool
 }
 
-impl Detection {
+pub struct SendableMat(Mat);
 
-    pub async fn run(detection: &Mutex<Detection>) {
-        Detection::load(detection).await;
+unsafe impl Send for SendableMat {}
+unsafe impl Sync for SendableMat {}
+
+impl AsyncDetector {
+
+    pub fn run(rt: Runtime, detection: &'static Mutex<AsyncDetector>) -> 
+        Result<(Receiver<Option<ImageDetections>>, Receiver<Option<SendableMat>>,  JoinHandle<()>), Error> {
+        
+        let (tx_detections, rx_detections) = channel(None);
+        let (tx_image, rx_image) = channel(None);
+
+        let handle = rt.spawn(AsyncDetector::load(tx_detections, tx_image, detection));
+
+        Ok((rx_detections, rx_image, handle))
     }
 
     #[async_recursion]
-    pub async fn load(detection: &Mutex<Detection>) {
+    pub async fn load(tx_detections: Sender<Option<ImageDetections>>, tx_image: Sender<Option<SendableMat>>, detection: &'static Mutex<AsyncDetector>) {
         let (tx, rx) = channel(true);
-
+    
         let handle = tokio::spawn(async move {
 
             let mut cam = VideoCapture::new(0, opencv::videoio::CAP_ANY).unwrap();
@@ -40,8 +63,6 @@ impl Detection {
             while *rx.borrow() {
                 let _result = cam.read(&mut raw_frame).unwrap();
 
-                println!("{}", raw_frame.rows());
-                println!("{}", raw_frame.cols());
                 let cropped_mat = raw_frame.apply(
                     opencv::core::Range::new(0, raw_frame.rows()).unwrap(), 
                     opencv::core::Range::new((raw_frame.cols() - raw_frame.rows()) / 2, raw_frame.cols() - ((raw_frame.cols() - raw_frame.rows()) / 2)).unwrap()).unwrap();
@@ -50,33 +71,30 @@ impl Detection {
 
 
                 opencv::imgproc::resize(&cropped_mat, &mut frame, opencv::core::Size::new(2048, 2048), 0.0, 0.0, INTER_LINEAR).unwrap();
-                println!("{}", frame.rows());
-                println!("{}", frame.cols());
 
                 let detections = model.detect(frame.clone(), 0.2, 0.45).unwrap();
 
-                match detection_render::render_detections(&mut frame, opencv::core::Size::new(2048, 2048), &detections) {
-                    Ok(_) => println!("Detections drawn"),
-                    Err(err) => println!("Detecions couldn't be drawn! {}", err)
-                }
+                crate::detection::render::render_detections(&mut frame, opencv::core::Size::new(2048, 2048), &detections).unwrap();
 
-                let params: Vector<i32> = Vector::new();
-                imwrite("frame.png", &frame, &params).unwrap();
+                tx_detections.send(Some(detections)).unwrap();
+                tx_image.send(Some(SendableMat(frame))).unwrap();
             }
+
+            (tx_detections, tx_image)
         });
 
         detection.lock().reload_sender = Some(tx);
 
-        handle.await.unwrap();
+        let (tx_detections, tx_image, ) = handle.await.unwrap();
 
         if detection.lock().enabled {
-            Detection::load(detection).await;
+            AsyncDetector::load(tx_detections, tx_image, detection).await;
         }
     }
 
 }
 
-impl Detection {
+impl AsyncDetector {
 
     pub const fn new() -> Self {
         Self {

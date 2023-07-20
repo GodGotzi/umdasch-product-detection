@@ -1,19 +1,23 @@
-pub mod data;
-pub mod model;
 
-use opencv::{imgproc::{get_text_size, put_text, FONT_HERSHEY_SIMPLEX, LineTypes, rectangle}, prelude::Mat, core::{CV_CN_SHIFT, Scalar}, Error};
+use opencv::{
+    imgproc::{get_text_size, put_text, FONT_HERSHEY_SIMPLEX, LineTypes, rectangle}, 
+    prelude::Mat, 
+    core::Scalar, 
+    Error
+};
+
 use opencv::core::{Rect, Point};
 
-use self::data::YoloImageDetections;
+use super::data::ImageDetections;
 
-const FONT_SCALE: f64 = 0.7;
+const FONT_SCALE: f64 = 0.5;
 const FONT_FACE: i32 = FONT_HERSHEY_SIMPLEX;
 const THICKNESS: i32 = 1;
 
 const BLACK: Scalar  = Scalar::new(0.0, 0.0, 0.0, 1.0);
-const BLUE: Scalar = Scalar::new(255.0, 178.0, 50.0, 1.0);
+const _BLUE: Scalar = Scalar::new(255.0, 178.0, 50.0, 1.0);
 const YELLOW: Scalar = Scalar::new(0.0, 255.0, 255.0, 1.0);
-const _RED: Scalar = Scalar::new(0.0, 0.0, 255.0, 1.0);
+const WHITE: Scalar = Scalar::new(255.0, 255.0, 255.0, 1.0);
 
 fn draw_label(img: &mut Mat, label: &str, left: i32, native_top: i32) -> Result<(), Error> {
     let mut baseline = 0;
@@ -24,7 +28,7 @@ fn draw_label(img: &mut Mat, label: &str, left: i32, native_top: i32) -> Result<
     let rect = Rect::new(left, top, size.width, size.height);
 
     if let Err(_) = rectangle(img, rect, 
-        BLACK, 2, LineTypes::LINE_4 as i32, CV_CN_SHIFT) {
+        WHITE, -1, LineTypes::LINE_4 as i32, 0) {
         todo!("Handle Error")
     }
 
@@ -32,14 +36,13 @@ fn draw_label(img: &mut Mat, label: &str, left: i32, native_top: i32) -> Result<
 
     put_text(img,
             label, org, FONT_FACE, 
-            FONT_SCALE, YELLOW, THICKNESS, 
+            FONT_SCALE, BLACK, THICKNESS, 
             LineTypes::LINE_AA as i32, false)?;
-
 
     Ok(())
 }
 
-pub fn render_detections(img: &mut Mat, size: opencv::core::Size, detections: &YoloImageDetections) -> Result<(), Error> {
+pub fn render_detections(img: &mut Mat, size: opencv::core::Size, detections: &ImageDetections) -> Result<(), Error> {
 
     for detection in detections.detections.iter() {
         
@@ -52,9 +55,9 @@ pub fn render_detections(img: &mut Mat, size: opencv::core::Size, detections: &Y
 
         println!("{:?}", rect);
 
-        rectangle(img, rect, BLUE, 3*THICKNESS, LineTypes::LINE_4 as i32, 0)?;
+        rectangle(img, rect, YELLOW, 3*THICKNESS, LineTypes::LINE_4 as i32, 0)?;
 
-        let label: String = format!("Class: {} | Conf: {:.3}", detection.class_index, detection.confidence);
+        let label: String = format!("{} | Conf: {:.3}", detection.class_index, detection.confidence);
         draw_label(img, label.as_str(), x as i32, y as i32)?;
     }
 
