@@ -21,7 +21,7 @@ async fn main() -> Result<(), eframe::Error> {
 
     let (tx_detections, rx_detections) = channel(None);
     let (tx_image, rx_image) = channel(None);
-    let (tx_reload, rx_reload) = tokio::sync::mpsc::channel(100);
+    let (tx_reload, rx_reload) = tokio::sync::mpsc::unbounded_channel();
     let (tx_enable, rx_enable) = channel(true);
 
     let handle = rt.spawn(AsyncDetector::load(tx_detections, tx_image, tx_reload.clone(), rx_reload, rx_enable));

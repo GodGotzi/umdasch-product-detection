@@ -56,15 +56,15 @@ fn filter_confidence(detections: Vec<Detection>, min_confidence: f32) -> Vec<Det
 }
 
 
-pub struct YoloModel {
+pub struct DNNModel {
     net: opencv::dnn::Net,
     input_size: opencv::core::Size_<i32>,
 }
 
-impl YoloModel {
+impl DNNModel {
     
     pub fn new_from_file(model_path: &str, input_size: (i32, i32)) -> Result<Self, Error> {
-        YoloModel::new_from_network(read_net_from_onnx(model_path)?, input_size)
+        DNNModel::new_from_network(read_net_from_onnx(model_path)?, input_size)
     }
 
     pub fn new_from_network(
@@ -85,7 +85,6 @@ impl YoloModel {
         })
     }
 
-    /// Load an OpenCV image, resize and adjust the color channels.
     fn load_capture(&self, image: Mat) -> Result<Mat, Error> { 
 
         let mut boxed_image = Mat::default();
@@ -100,8 +99,6 @@ impl YoloModel {
             BORDER_CONSTANT,
             Scalar::new(114f64, 114f64, 114f64, 0f64),
         )?;
-
-        // println!("scale factor: {:?}", 1.0 / 255.0);
 
         let blob = opencv::dnn::blob_from_image(
             &boxed_image,
@@ -119,7 +116,6 @@ impl YoloModel {
         Ok(blob)
     }
 
-    // Detect objects in an image.
     fn forward(&mut self, blob: &Mat) -> Result<Mat, Error> {
         let mut output_tensor_blobs: opencv::core::Vector<Mat> = opencv::core::Vector::default();
 
@@ -132,7 +128,6 @@ impl YoloModel {
         output_tensor_blobs.get(0)
     }
 
-    // Convert the output of the YOLOv5 model to a vector of [YoloDetection].
     fn convert_to_detections(&self, outputs: &Mat) -> Result<Vec<Detection>, Error> {
         let rows = *outputs.mat_size().get(1).unwrap();
         let mut detections = Vec::<Detection>::with_capacity(rows as usize);
@@ -209,4 +204,5 @@ impl YoloModel {
             detections
         })
     }
+    
 }

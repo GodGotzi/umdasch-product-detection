@@ -8,11 +8,12 @@ use crate::{
 
 use tokio::sync::watch::*;
 
+#[allow(unused)]
 pub struct ProductDetectionApplication {
     _context: ApplicationContext,
     receiver_detections: Receiver<Option<ImageDetections>>,
     receiver_image: Receiver<Option<SendableMat>>,
-    sender_reload: tokio::sync::mpsc::Sender<bool>,
+    sender_reload: tokio::sync::mpsc::UnboundedSender<bool>,
     sender_enable: Sender<bool>
 }
 
@@ -21,7 +22,7 @@ impl ProductDetectionApplication {
     pub fn new(
         receiver_detections: Receiver<Option<ImageDetections>>, 
         receiver_image: Receiver<Option<SendableMat>>, 
-        sender_reload: tokio::sync::mpsc::Sender<bool>, 
+        sender_reload: tokio::sync::mpsc::UnboundedSender<bool>, 
         sender_enable: Sender<bool>) -> Self {
 
         Self {
@@ -38,10 +39,18 @@ impl ProductDetectionApplication {
 
 impl ProductDetectionApplication {
 
-    #[allow(unused_must_use)]
-    fn _reload(&mut self) {
-        self.sender_reload.send(false);
-    } 
+    fn _reload(&mut self) -> Result<(), tokio::sync::mpsc::error::SendError<bool>> {
+        self.sender_reload.send(false)
+    }
+
+    fn _enable_detect(&mut self) -> Result<(), error::SendError<bool>> {
+        self.sender_enable.send(true)
+    }
+
+    fn _disable_detect(&mut self) -> Result<(), error::SendError<bool>> {
+        self.sender_enable.send(false)
+    }
+
 
 }
 

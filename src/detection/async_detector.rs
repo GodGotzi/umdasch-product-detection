@@ -10,7 +10,7 @@ use opencv::{
 
 use tokio::sync::watch::*;
 
-use crate::detection::{model::YoloModel, data::ImageDetections};
+use crate::detection::{model::DNNModel, data::ImageDetections};
 
 pub struct AsyncDetector;
 
@@ -24,8 +24,8 @@ impl AsyncDetector {
     pub async fn load(
         tx_detections: Sender<Option<ImageDetections>>, 
         tx_image: Sender<Option<SendableMat>>, 
-        tx_reload: tokio::sync::mpsc::Sender<bool>,
-        mut rx_reload: tokio::sync::mpsc::Receiver<bool>, 
+        tx_reload: tokio::sync::mpsc::UnboundedSender<bool>,
+        mut rx_reload: tokio::sync::mpsc::UnboundedReceiver<bool>, 
         mut rx_enable: Receiver<bool>) {
 
         let mut cam = VideoCapture::new(0, opencv::videoio::CAP_ANY).unwrap();
@@ -40,10 +40,10 @@ impl AsyncDetector {
         }
 
         while *rx_enable.borrow_and_update() {
-            let mut model = YoloModel::new_from_file("yolov5/yolov5s.onnx", (2048, 2048)).unwrap();
+            let mut model = DNNModel::new_from_file("yolov5/yolov5s.onnx", (2048, 2048)).unwrap();
             let mut raw_frame = Mat::default();
 
-            tx_reload.send(true).await.unwrap();
+            tx_reload.send(true).unwrap();
 
             while rx_reload.blocking_recv().unwrap() {
                 let _result = cam.read(&mut raw_frame).unwrap();
