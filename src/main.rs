@@ -1,26 +1,14 @@
-
-/*
-use opencv::prelude::*;
-use opencv::videoio::VideoCapture;
-use opencv::highgui::*;
-*/
-
 use application::ProductDetectionApplication;
-use egui::mutex::Mutex;
 
-use tokio::runtime;
+use tokio::{runtime, sync::watch::channel};
 use detection::async_detector::AsyncDetector;
-use lazy_static::lazy_static;
 
 mod gui;
 mod application;
 mod detection;
 
-lazy_static! {
-    static ref DETECTION: Mutex<AsyncDetector> = Mutex::new(AsyncDetector::new());
-}
-
-fn main() -> Result<(), eframe::Error> {
+#[tokio::main]
+async fn main() -> Result<(), eframe::Error> {
 
     let (num_tokio_worker_threads, max_tokio_blocking_threads) = (num_cpus::get(), 512); // 512 is tokio's current default
     //println!("{}", num_tokio_worker_threads);
@@ -31,14 +19,12 @@ fn main() -> Result<(), eframe::Error> {
         .max_blocking_threads(max_tokio_blocking_threads)
         .build().unwrap();
 
-    let handle = AsyncDetector::run(rt, &DETECTION);
+    let (tx_detections, rx_detections) = channel(None);
+    let (tx_image, rx_image) = channel(None);
+    let (tx_reload, rx_reload) = tokio::sync::mpsc::channel(100);
+    let (tx_enable, rx_enable) = channel(true);
 
-    if let Err(err) = handle {
-        panic!("Couldn't create Receiver for DetectionContext {}", err);
-    }
-
-    let (rx_detections, rx_image, _detection_handle) = 
-        handle.unwrap();
+    let handle = rt.spawn(AsyncDetector::load(tx_detections, tx_image, tx_reload.clone(), rx_reload, rx_enable));
 
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     let options = eframe::NativeOptions {
@@ -48,13 +34,17 @@ fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    let application = ProductDetectionApplication::new(rx_detections, rx_image);
+    let application = ProductDetectionApplication::new(rx_detections, rx_image, tx_reload, tx_enable);
 
     eframe::run_native(
         "Umdasch - Product Detection Application",
         options,
         Box::new(|_cc| Box::new(application)),
-    )
+    ).unwrap();
+
+    handle.await.unwrap();
+
+    Ok(())
 }
 
 fn load_icon(path: &str) -> eframe::IconData {

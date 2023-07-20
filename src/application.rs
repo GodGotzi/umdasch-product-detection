@@ -11,20 +11,37 @@ use tokio::sync::watch::*;
 pub struct ProductDetectionApplication {
     _context: ApplicationContext,
     receiver_detections: Receiver<Option<ImageDetections>>,
-    receiver_image: Receiver<Option<SendableMat>> 
+    receiver_image: Receiver<Option<SendableMat>>,
+    sender_reload: tokio::sync::mpsc::Sender<bool>,
+    sender_enable: Sender<bool>
 }
 
 impl ProductDetectionApplication {
 
-    pub fn new(receiver_detections: Receiver<Option<ImageDetections>>, receiver_image: Receiver<Option<SendableMat>>) -> Self {
+    pub fn new(
+        receiver_detections: Receiver<Option<ImageDetections>>, 
+        receiver_image: Receiver<Option<SendableMat>>, 
+        sender_reload: tokio::sync::mpsc::Sender<bool>, 
+        sender_enable: Sender<bool>) -> Self {
 
         Self {
             _context: ApplicationContext::default(),
             receiver_detections,
-            receiver_image
+            receiver_image,
+            sender_reload,
+            sender_enable
         }
     
     }
+
+}
+
+impl ProductDetectionApplication {
+
+    #[allow(unused_must_use)]
+    fn _reload(&mut self) {
+        self.sender_reload.send(false);
+    } 
 
 }
 
