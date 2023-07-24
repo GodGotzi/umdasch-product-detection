@@ -132,9 +132,9 @@ if __name__ == "__main__":
 
     sample_size = int(sys.argv[6])
 
-    scene, camera_node = detection.build_scene()
-
     for product in products:
+        scene, camera_node = detection.build_scene()
+        
         if not product.has3dModel(sys.argv[4]):
             print("WARNING Product has no 3d model: " + product.path)
             print("Skipping...")

@@ -53,8 +53,8 @@ def readProduct(path: str):
         if not 'number' in data or not 'name' in data or not 'surface_color' in data or not 'class_id' in data:
             return None
     
-        art_num = data['number']
-        name = data['name']
+        art_num = str(data['number'])
+        name = str(data['name'])
         class_id = int(data['class_id'])
         
         if not 'red' in data['surface_color'] or not 'green' in data['surface_color'] or not 'blue' in data['surface_color']:
