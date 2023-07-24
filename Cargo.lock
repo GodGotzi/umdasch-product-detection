@@ -920,6 +920,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56ce8c6da7551ec6c462cbaf3bfbc75131ebbfa1c944aeaa9dab51ca1c5f0c3b"
 
 [[package]]
+name = "easybench"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fe5e0c7c863ab37184b6310b4ff6b857c71814ff38e93c5b99fbda1467a5a32"
+
+[[package]]
 name = "ecolor"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2191,6 +2197,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ownref"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "695ddbf91b430c62d37df027cfb087bac416ecb9d54290998063944767009314"
+
+[[package]]
 name = "parking"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3058,6 +3070,7 @@ version = "0.1.0"
 dependencies = [
  "async-recursion",
  "clap",
+ "easybench",
  "eframe",
  "egui",
  "egui_extras",
@@ -3069,6 +3082,8 @@ dependencies = [
  "lazy_static",
  "num_cpus",
  "opencv",
+ "ownref",
+ "rayon",
  "serde",
  "serde_json",
  "shellexpand",

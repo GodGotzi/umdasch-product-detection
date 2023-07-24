@@ -1,36 +1,29 @@
 
 use crate::{
     gui, detection::{
-        data::ImageDetections, 
-        async_detector::SendableMat
+        async_detector::AsyncDetector, DetectionContext, 
     }
 };
 
-use tokio::sync::watch::*;
+use tokio::runtime::Runtime;
 
 #[allow(unused)]
 pub struct ProductDetectionApplication {
-    _context: ApplicationContext,
-    receiver_detections: Receiver<Option<ImageDetections>>,
-    receiver_image: Receiver<Option<SendableMat>>,
-    sender_reload: tokio::sync::mpsc::UnboundedSender<bool>,
-    sender_enable: Sender<bool>
+    pub _context: ApplicationContext,
+    pub detection_context: DetectionContext,
+    pub async_detector: AsyncDetector,
+    pub tokio_runtime: Runtime
 }
 
 impl ProductDetectionApplication {
 
-    pub fn new(
-        receiver_detections: Receiver<Option<ImageDetections>>, 
-        receiver_image: Receiver<Option<SendableMat>>, 
-        sender_reload: tokio::sync::mpsc::UnboundedSender<bool>, 
-        sender_enable: Sender<bool>) -> Self {
+    pub fn new(rt: Runtime) -> Self {
 
         Self {
             _context: ApplicationContext::default(),
-            receiver_detections,
-            receiver_image,
-            sender_reload,
-            sender_enable
+            detection_context: DetectionContext::default(),
+            async_detector: AsyncDetector::new(),
+            tokio_runtime: rt
         }
     
     }
@@ -39,42 +32,37 @@ impl ProductDetectionApplication {
 
 impl ProductDetectionApplication {
 
-    fn _reload(&mut self) -> Result<(), tokio::sync::mpsc::error::SendError<bool>> {
-        self.sender_reload.send(false)
-    }
+    pub fn _reload(&mut self) {
+        let handle = self.async_detector.load(&self.tokio_runtime);
 
-    fn _enable_detect(&mut self) -> Result<(), error::SendError<bool>> {
-        self.sender_enable.send(true)
+        match handle {
+            Some(_) => println!("Detection Started!"),
+            None => println!("Detection already started/last Detection not finished"),
+        }
     }
-
-    fn _disable_detect(&mut self) -> Result<(), error::SendError<bool>> {
-        self.sender_enable.send(false)
-    }
-
 
 }
 
 impl eframe::App for ProductDetectionApplication {
-
+    
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         ctx.set_visuals(egui::Visuals::light());
 
-        match self.receiver_detections.has_changed() {
-            Ok(changed) => {
-                if changed {
-                    println!("Changed Detections!");
-                }
-            },
-            Err(err) => println!("Not Loaded {}", err),
+        if self.async_detector.is_finished() {
+            if let Some((img, detections)) = self.async_detector.result() {
+                self.detection_context.detections = Some(detections);
+                self.detection_context.img = Some(img.0);   
+            }
         }
 
-        match self.receiver_image.has_changed() {
-            Ok(changed) => {
-                if changed {
-                    println!("Changed Image!");
-                }
-            },
-            Err(err) => println!("Not Loaded {}", err),
+        if let Some(rx) = self.detection_context.resize_rx.as_mut() {
+            println!("yes");
+            if let Ok(result) = rx.try_recv() {
+                self.detection_context.resized_img = Some(result);
+                self.detection_context.resize_rx = None;
+                self.detection_context.resize_handle = None;
+                self.detection_context.resizing = false;
+            }
         }
 
         gui::show_top_panel(ctx);
@@ -82,14 +70,12 @@ impl eframe::App for ProductDetectionApplication {
         gui::show_main_panel(self, ctx, frame);
     }
 
-}
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.async_detector.kill();
+        self.detection_context.kill();
+    }
 
+}
 
 #[derive(Default)]
 pub struct ApplicationContext;
-
-#[derive(Default)]
-pub struct DetectionContext {
-    
-}
-

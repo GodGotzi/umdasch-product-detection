@@ -44,7 +44,7 @@ fn draw_label(img: &mut Mat, label: &str, left: i32, native_top: i32) -> Result<
 
 pub fn render_detections(img: &mut Mat, size: opencv::core::Size, detections: &ImageDetections) -> Result<(), Error> {
 
-    for detection in detections.detections.iter() {
+    for detection in detections.detections.lock().unwrap().iter() {
         
         let x = (detection.x) * size.width as f32;
         let y = (detection.y) * size.height as f32;

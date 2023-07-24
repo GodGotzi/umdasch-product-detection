@@ -1,8 +1,10 @@
+use std::sync::Mutex;
+
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ImageDetections {
-    pub detections: Vec<Detection>,
+    pub detections: Mutex<Vec<Detection>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

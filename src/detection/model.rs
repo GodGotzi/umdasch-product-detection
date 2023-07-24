@@ -1,11 +1,16 @@
 
+use std::{collections::LinkedList, sync::{Arc, Mutex}};
+
 use opencv::{
     core::{copy_make_border, Scalar, BORDER_CONSTANT, CV_32F},
     dnn::read_net_from_onnx,
     prelude::{Mat, MatTraitConst, NetTrait, NetTraitConst},
     Error,
 };
+use ownref::ArcOwnedC;
 use tracing::info;
+
+use rayon::prelude::*;
 
 use super::data::*;
 
@@ -24,14 +29,14 @@ fn iou(a: &Detection, b: &Detection) -> f32 {
 }
 
 
-fn non_max_suppression(detections: Vec<Detection>, nms_threshold: f32) -> Vec<Detection> {
-    let mut suppressed_detections: Vec<Detection> = vec![];
-    let mut sorted_detections: Vec<Detection> = detections.to_vec();
+fn non_max_suppression(detections: LinkedList<Detection>, nms_threshold: f32) -> Mutex<Vec<Detection>> {
+    let mut suppressed_detections: Mutex<Vec<Detection>> = Mutex::new(vec![]);
+    let mut sorted_detections: Vec<Detection> = detections.into_iter().collect();
 
     sorted_detections.sort_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap());
     sorted_detections.reverse();
 
-    for i in 0..sorted_detections.len() {
+    (0..sorted_detections.len()).into_par_iter().for_each(|i| {
         let mut keep = true;
         for j in 0..i {
             let iou = iou(&sorted_detections[i], &sorted_detections[j]);
@@ -41,9 +46,10 @@ fn non_max_suppression(detections: Vec<Detection>, nms_threshold: f32) -> Vec<De
             }
         }
         if keep {
-            suppressed_detections.push(sorted_detections[i].clone());
+            suppressed_detections.lock().unwrap().push(sorted_detections[i].clone());
         }
-    }
+    });
+
     suppressed_detections
 }
 
@@ -55,7 +61,7 @@ fn filter_confidence(detections: Vec<Detection>, min_confidence: f32) -> Vec<Det
         .collect()
 }
 
-
+#[derive(Clone, Debug)]
 pub struct DNNModel {
     net: opencv::dnn::Net,
     input_size: opencv::core::Size_<i32>,
@@ -64,7 +70,8 @@ pub struct DNNModel {
 impl DNNModel {
     
     pub fn new_from_file(model_path: &str, input_size: (i32, i32)) -> Result<Self, Error> {
-        DNNModel::new_from_network(read_net_from_onnx(model_path)?, input_size)
+        let net = read_net_from_onnx(model_path)?;
+        DNNModel::new_from_network(net, input_size)
     }
 
     pub fn new_from_network(
@@ -128,16 +135,21 @@ impl DNNModel {
         output_tensor_blobs.get(0)
     }
 
-    fn convert_to_detections(&self, outputs: &Mat) -> Result<Vec<Detection>, Error> {
+    fn convert_to_detections(&self, outputs: &Mat, min_confidence: f32) -> Result<LinkedList<Detection>, Error> {
         let rows = *outputs.mat_size().get(1).unwrap();
-        let mut detections = Vec::<Detection>::with_capacity(rows as usize);
-
+        let mut detections = LinkedList::<Detection>::new();
+        
+        let now = std::time::Instant::now();
         for row in 0..rows {
             let cx: &f32 = outputs.at_3d(0, row, 0)?;
             let cy: &f32 = outputs.at_3d(0, row, 1)?;
             let w: &f32 = outputs.at_3d(0, row, 2)?;
             let h: &f32 = outputs.at_3d(0, row, 3)?;
             let sc: &f32 = outputs.at_3d(0, row, 4)?;
+
+            if min_confidence < *sc {
+                continue;
+            }
 
             let mut x_min = *cx - *w / 2.0;
             let mut y_min = *cy - *h / 2.0;
@@ -163,6 +175,7 @@ impl DNNModel {
 
             let mut max_index = 0;
             let mut max_confidence = 0.0;
+
             for (index, confidence) in classes_confidences.iter().enumerate() {
                 if *confidence > &max_confidence {
                     max_index = index;
@@ -170,7 +183,7 @@ impl DNNModel {
                 }
             }
 
-            detections.push(Detection {
+            detections.push_back(Detection {
                 x: x_min,
                 y: y_min,
                 width,
@@ -179,6 +192,8 @@ impl DNNModel {
                 confidence: *sc,
             })
         }
+
+        println!("{:?}", now.elapsed());
 
         Ok(detections)
     }
@@ -190,14 +205,14 @@ impl DNNModel {
         minimum_confidence: f32,
         nms_threshold: f32,
     ) -> Result<ImageDetections, Error> {
-        let image = self.load_capture(capture)?;
+        let image: Mat = self.load_capture(capture)?;
 
-        let result = self.forward(&image)?;
-
-        let detections = self.convert_to_detections(&result)?;
-
-        let detections = filter_confidence(detections, minimum_confidence);
-
+        let result: Mat = self.forward(&image)?;
+        println!("ok");
+        
+        //self.convert_to_detections(&result, minimum_confidence).unwrap();
+        let detections = self.convert_to_detections(&result, minimum_confidence)?;
+        println!("ok2");
         let detections = non_max_suppression(detections, nms_threshold);
 
         Ok(ImageDetections {
