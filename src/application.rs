@@ -1,29 +1,63 @@
 
 use crate::{
-    gui, detection::{
-        async_detector::AsyncDetector, DetectionContext, 
+    gui, monitor::{
+        async_detector::{AsyncDetector, SendableMat}, MonitorHandler, data::ImageDetections, 
     }
 };
 
+use eframe::CreationContext;
 use tokio::runtime::Runtime;
+
+pub struct CaptureContainer {
+    tx_capture: tokio::sync::watch::Sender<Option<((), SendableMat)>>, 
+    rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>,
+    tx_detection: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>, 
+    rx_detection: tokio::sync::mpsc::UnboundedReceiver<Option<(ImageDetections, SendableMat)>>
+}
+
+impl CaptureContainer {
+
+
+    pub fn new(
+        tx_capture: tokio::sync::watch::Sender<Option<((), SendableMat)>>, 
+        rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>,
+        tx_detection: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>, 
+        rx_detection: tokio::sync::mpsc::UnboundedReceiver<Option<(ImageDetections, SendableMat)>>) -> Self {
+
+        Self {
+            tx_capture,
+            rx_capture,
+            tx_detection,
+            rx_detection,
+        }
+    }
+
+}
 
 #[allow(unused)]
 pub struct ProductDetectionApplication {
     pub _context: ApplicationContext,
-    pub detection_context: DetectionContext,
+    pub monitor_handler: MonitorHandler,
     pub async_detector: AsyncDetector,
-    pub tokio_runtime: Runtime
+    pub tokio_runtime: Runtime,
+    tx_detections: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>,
+    rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>
 }
 
 impl ProductDetectionApplication {
 
-    pub fn new(rt: Runtime) -> Self {
+    pub fn new(rt: Runtime, detector: AsyncDetector, cc: &CreationContext, container: CaptureContainer) -> Self {
+        rt.spawn(AsyncDetector::capture_loop(cc.egui_ctx.clone(), container.tx_capture));
 
+        let monitor = MonitorHandler::new(container.rx_capture.clone(), container.rx_detection);
+        
         Self {
             _context: ApplicationContext::default(),
-            detection_context: DetectionContext::default(),
-            async_detector: AsyncDetector::new(),
-            tokio_runtime: rt
+            monitor_handler: monitor,
+            async_detector: detector,
+            tokio_runtime: rt,
+            tx_detections: container.tx_detection,
+            rx_capture: container.rx_capture
         }
     
     }
@@ -32,8 +66,8 @@ impl ProductDetectionApplication {
 
 impl ProductDetectionApplication {
 
-    pub fn _reload(&mut self) {
-        let handle = self.async_detector.load(&self.tokio_runtime);
+    pub fn reload(&mut self) {
+        let handle = self.async_detector.load(&self.tokio_runtime, self.rx_capture.clone(), self.tx_detections.clone());
 
         match handle {
             Some(_) => println!("Detection Started!"),
@@ -48,31 +82,23 @@ impl eframe::App for ProductDetectionApplication {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         ctx.set_visuals(egui::Visuals::light());
 
-        if self.async_detector.is_finished() {
-            if let Some((img, detections)) = self.async_detector.result() {
-                self.detection_context.detections = Some(detections);
-                self.detection_context.img = Some(img.0);   
-            }
-        }
-
-        if let Some(rx) = self.detection_context.resize_rx.as_mut() {
-            println!("yes");
-            if let Ok(result) = rx.try_recv() {
-                self.detection_context.resized_img = Some(result);
-                self.detection_context.resize_rx = None;
-                self.detection_context.resize_handle = None;
-                self.detection_context.resizing = false;
-            }
-        }
+        self.monitor_handler.capture.check();
+        self.monitor_handler.detection.check();
 
         gui::show_top_panel(ctx);
-
         gui::show_main_panel(self, ctx, frame);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.async_detector.kill();
-        self.detection_context.kill();
+        self.monitor_handler.kill();
+    }
+
+    fn on_close_event(&mut self) -> bool {
+        self.async_detector.kill();
+        self.monitor_handler.kill();
+
+        true
     }
 
 }

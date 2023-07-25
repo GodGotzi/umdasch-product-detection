@@ -1,11 +1,11 @@
-use application::ProductDetectionApplication;
+use application::{ProductDetectionApplication, CaptureContainer};
 
-use tokio::{runtime, sync::watch::channel};
-use detection::{async_detector::{AsyncDetector, SendableImage}, data::ImageDetections};
+use monitor::{async_detector::{AsyncDetector, SendableMat}, data::ImageDetections};
+use tokio::runtime;
 
 mod gui;
 mod application;
-mod detection;
+mod monitor;
 
 #[tokio::main]
 async fn main() -> Result<(), eframe::Error> {
@@ -19,6 +19,11 @@ async fn main() -> Result<(), eframe::Error> {
         .max_blocking_threads(max_tokio_blocking_threads)
         .build().unwrap();
     
+    let (tx_capture, rx_capture) = tokio::sync::watch::channel::<Option<((), SendableMat)>>(None);
+    let (tx_detections, rx_detections) = tokio::sync::mpsc::unbounded_channel::<Option<(ImageDetections, SendableMat)>>();
+
+    let container = CaptureContainer::new(tx_capture, rx_capture, tx_detections, rx_detections);
+
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(1024.0, 1024.0)),
@@ -26,13 +31,13 @@ async fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    let application = ProductDetectionApplication::new(rt);
-
     eframe::run_native(
         "Umdasch - Product Detection Application",
         options,
-        Box::new(|_cc| Box::new(application)),
-    ).unwrap();
+        Box::new(move |cc| {
+            Box::new(ProductDetectionApplication::new(rt, AsyncDetector::new(), cc, container))
+        }
+    )).unwrap();
 
     Ok(())
 }
