@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::{Arc, atomic::AtomicBool, Mutex};
 
 use opencv::{
     prelude::*, 
@@ -11,7 +11,7 @@ use opencv::{
 
 use tokio::task::JoinHandle;
 
-use crate::{monitor::{model::DNNModel, data::ImageDetections}, application::ApplicationContext};
+use crate::{monitor::{model::DNNModel, data::ImageDetections}, application::ApplicationContext, training::TrainingManager};
 
 pub struct AsyncDetector {
     handle: Option<JoinHandle<()>>,
@@ -45,7 +45,7 @@ impl AsyncDetector {
             let opened = cam.is_opened().unwrap();
     
             if !opened {
-                panic!("Couldn't find Webcamera!");
+                println!("Couldn't find Webcamera!");
             }
     
             let mut raw_frame = Mat::default();
@@ -67,27 +67,32 @@ impl AsyncDetector {
         }
     }
 
-    async fn load_async(context: ApplicationContext, tx: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>, mut rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>, mut model: DNNModel) {
+    async fn load_async(context: ApplicationContext, training_manager: Arc<Mutex<TrainingManager>>, tx: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>, mut rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>, mut model: DNNModel) {
         if let Some(matrix) = rx_capture.borrow_and_update().as_ref() {
+            training_manager.lock().unwrap().print("Starting Detection!");
+
             let threshold: f32 = match context.threshold.parse() {
                 Ok(val) => val,
                 Err(_) => context.threshold_default.parse().unwrap(),
             };
 
-            let detections = model.detect(&matrix.1.0, threshold, context.suppression, context.filter_confidence).unwrap();
+            training_manager.lock().unwrap().print("Detecting...");
+            let detections = model.detect(&matrix.1.0, threshold, context.suppression, context.filter_confidence, training_manager.clone()).unwrap();
             
+            training_manager.lock().unwrap().print("Sending Data...");
             tx.send(Some((detections, matrix.1.clone()))).unwrap();
+            training_manager.lock().unwrap().print("Data send");
         }
     }
 
-    pub fn load(&mut self, context: ApplicationContext, rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>, tx_detections: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>) -> Option<&JoinHandle<()>> {
+    pub fn load(&mut self, context: ApplicationContext, training_manager: Arc<Mutex<TrainingManager>>, rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>, tx_detections: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>) -> Option<&JoinHandle<()>> {
         if let Some(handle) = &self.handle {
             if !handle.is_finished() {
                 return None;
             }
         }
 
-        self.handle = Some(tokio::spawn(AsyncDetector::load_async(context, tx_detections, rx_capture, self.model.clone())));
+        self.handle = Some(tokio::spawn(AsyncDetector::load_async(context, training_manager, tx_detections, rx_capture, self.model.clone())));
         self.handle.as_ref()
     }
 

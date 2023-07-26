@@ -7,6 +7,7 @@ mod gui;
 mod application;
 mod monitor;
 mod product;
+mod training;
 
 #[tokio::main]
 async fn main() -> Result<(), eframe::Error> {

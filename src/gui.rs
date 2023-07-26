@@ -45,10 +45,10 @@ pub fn show_main_panel(app: &mut ProductDetectionApplication, ctx: &egui::Contex
         };
 
         app.monitor_handler.capture
-            .resize(size.clone());
+            .resize(size.clone(), app.training_manager.clone());
 
         app.monitor_handler.detection
-            .resize(size.clone(), &app.product_server);
+            .resize(size.clone(), &app.product_server, app.training_manager.clone());
 
         if app.monitor_handler.capture.get_image().is_some() && app.monitor_handler.detection.get_image().is_none() {
             let img = app.monitor_handler.capture.get_image().unwrap();
@@ -94,7 +94,7 @@ fn show_training_panel(app: &mut ProductDetectionApplication, ctx: &egui::Contex
         .show(ctx, |ui| {
             utils::with_heading("Training", ui);
 
-            training::show(app, ui);
+            training::show(app, ui, frame);
         });
 }
 
@@ -105,7 +105,7 @@ fn show_terminal_panel(app: &mut ProductDetectionApplication, ctx: &egui::Contex
         .exact_height(exp)
         .resizable(false)
         .show(ctx, |ui| {
-            terminal::show(app, ui);
+            terminal::show(app, ui, frame);
 
         });
 }

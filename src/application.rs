@@ -1,10 +1,10 @@
 
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 use crate::{
     gui, monitor::{
         async_detector::{AsyncDetector, SendableMat}, MonitorHandler, data::ImageDetections, 
-    }, product::ProductServer
+    }, product::ProductServer, training::TrainingManager
 };
 
 use eframe::CreationContext;
@@ -41,6 +41,7 @@ pub struct ProductDetectionApplication {
     pub monitor_handler: MonitorHandler,
     pub async_detector: AsyncDetector,
     pub product_server: ProductServer,
+    pub training_manager: Arc<Mutex<TrainingManager>>,
     tx_detections: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>,
     rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>,
     capture_enable: Arc<AtomicBool>
@@ -60,6 +61,7 @@ impl ProductDetectionApplication {
             monitor_handler: monitor,
             async_detector: detector,
             product_server: product_server,
+            training_manager: Arc::new(Mutex::new(TrainingManager::default())),
             tx_detections: container.tx_detection,
             rx_capture: container.rx_capture,
             capture_enable
@@ -71,7 +73,7 @@ impl ProductDetectionApplication {
 impl ProductDetectionApplication {
 
     pub fn reload(&mut self) {
-        self.async_detector.load(self.context.clone(), self.rx_capture.clone(), self.tx_detections.clone());
+        self.async_detector.load(self.context.clone(), self.training_manager.clone(), self.rx_capture.clone(), self.tx_detections.clone());
     }
 
 }

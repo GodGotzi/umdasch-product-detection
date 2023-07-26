@@ -1,5 +1,5 @@
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::{Mutex, Arc}};
 
 use opencv::{
     core::{copy_make_border, Scalar, BORDER_CONSTANT, CV_32F},
@@ -7,6 +7,8 @@ use opencv::{
     prelude::{Mat, MatTraitConst, NetTrait, NetTraitConst},
     Error,
 };
+
+use crate::training::TrainingManager;
 
 use super::data::*;
 
@@ -38,7 +40,10 @@ fn suppression_fn(detections: Vec<Detection>) -> Vec<Detection> {
         }
     }
 
-    suppressed_detections.values().into_iter().map(|detection| detection.clone()).collect()
+    let mut detections_vec: Vec<Detection> = suppressed_detections.values().into_iter().map(|detection| detection.clone()).collect();
+    detections_vec.sort_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap());
+    detections_vec.reverse();
+    detections_vec
 }
 
 /// Filter detections by confidence.
@@ -155,24 +160,30 @@ impl DNNModel {
         frame: &Mat,
         minimum_confidence: f32,
         suppression: bool,
-        filter_conf: bool
+        filter_conf: bool,
+        training_manager: Arc<Mutex<TrainingManager>>
     ) -> Result<ImageDetections, Error> {
+
         // Load the image
+        training_manager.lock().unwrap().print("Loading Webcam capture");
         let mat = self.load_capture(frame)?;
 
         // Run the model on the image.
+        training_manager.lock().unwrap().print("Running Model on capture");
         let result = self.forward(&mat)?;
 
         // Convert the result to a Vec of Detections.
+        training_manager.lock().unwrap().print("Collect Detections");
         let mut detections = self.convert_to_detections(&result)?;
 
         // Filter the detections by confidence.
-
         if filter_conf {
+            training_manager.lock().unwrap().print(format!("Filter Confidence of: {}", minimum_confidence).as_str());
             detections = filter_confidence(detections, minimum_confidence);
         }
 
         if suppression {
+            training_manager.lock().unwrap().print("Suppressing Detections");
             detections = suppression_fn(detections);
         }
 

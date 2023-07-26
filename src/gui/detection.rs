@@ -39,7 +39,7 @@ pub fn show(app: &mut ProductDetectionApplication, ui: &mut Ui, frame: &mut efra
                         .show(ui, |ui| {
 
                             ui.horizontal(|ui| {
-                                ui.label("Threshhold (float): ");
+                                ui.label("Threshold (float): ");
                                 ui.text_edit_singleline(&mut app.context.threshold);
                             });
 

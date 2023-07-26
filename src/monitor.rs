@@ -1,6 +1,6 @@
 
 
-use std::task::Poll;
+use std::{task::Poll, sync::{Arc, Mutex}};
 
 use egui::ColorImage;
 use egui_extras::RetainedImage;
@@ -8,7 +8,7 @@ use image::ImageBuffer;
 use opencv::{core::{Size, Point3_}, prelude::{Mat, MatTraitConst}, imgproc::INTER_LINEAR};
 use tokio::task::JoinHandle;
 
-use crate::product::ProductServer;
+use crate::{product::ProductServer, training::TrainingManager};
 
 use self::{data::ImageDetections, async_detector::SendableMat};
 
@@ -159,13 +159,15 @@ impl <T: Sync + Send + Clone + 'static> ImageSubscriberDetection<T> {
         self.image.as_ref()
     }
 
-    pub fn resize(&mut self, size: Size, product_server: &ProductServer) {
+    pub fn resize(&mut self, size: Size, product_server: &ProductServer, _training_manager: Arc<Mutex<TrainingManager>>) {
         if !self.resizing {
             if let Some(bundle) = self.matrix_bundle.as_ref() {
+                //training_manager.lock().unwrap().print("Resize (Detection)");
                 self.resizing = true;
-
+                //training_manager.lock().unwrap().print("Generate oneshot channel (Detection)");
                 let (tx, rx) = tokio::sync::oneshot::channel();
     
+                //training_manager.lock().unwrap().print("Start and register tokio resize thread");
                 self.image_resize_handle = Some(tokio::spawn(
                     ImageSubscriberDetection::<T>::async_resize(bundle.0.clone(), bundle.1.clone(), size, product_server.clone(), self.resize_fn.clone(), tx))
                 );
@@ -220,13 +222,16 @@ impl <T: Sync + Send + Clone + 'static> ImageSubscriberCapture<T> {
         self.image.as_ref()
     }
 
-    pub fn resize(&mut self, size: Size) {
+    pub fn resize(&mut self, size: Size, _training_manager: Arc<Mutex<TrainingManager>>) {
         if !self.resizing {
             if let Some(bundle) = self.matrix_bundle.as_ref() {
+                //training_manager.lock().unwrap().print("Resize");
                 self.resizing = true;
 
+                //training_manager.lock().unwrap().print("Generate oneshot channel");
                 let (tx, rx) = tokio::sync::oneshot::channel();
     
+                //training_manager.lock().unwrap().print("Start and register tokio resize thread");
                 self.image_resize_handle = Some(tokio::spawn(
                     ImageSubscriberCapture::<T>::async_resize(bundle.0.clone(), bundle.1.clone(), size, self.resize_fn.clone(), tx))
                 );
