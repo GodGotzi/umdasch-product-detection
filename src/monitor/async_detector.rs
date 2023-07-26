@@ -1,4 +1,5 @@
-use image::ImageBuffer;
+use std::sync::{Arc, atomic::AtomicBool};
+
 use opencv::{
     prelude::*, 
     videoio::{
@@ -10,7 +11,7 @@ use opencv::{
 
 use tokio::task::JoinHandle;
 
-use crate::monitor::{model::DNNModel, data::ImageDetections};
+use crate::{monitor::{model::DNNModel, data::ImageDetections}, application::ApplicationContext};
 
 pub struct AsyncDetector {
     handle: Option<JoinHandle<()>>,
@@ -25,12 +26,6 @@ pub struct SendableMat(pub Mat);
 unsafe impl Send for SendableMat {}
 unsafe impl Sync for SendableMat {}
 
-#[derive(Clone, Debug)]
-pub struct SendableImage(pub ImageBuffer<image::Rgba<u8>, Vec<u8>>);
-
-unsafe impl Send for SendableImage {}
-unsafe impl Sync for SendableImage {}
-
 impl AsyncDetector {
 
     pub fn new() -> Self {
@@ -40,8 +35,8 @@ impl AsyncDetector {
         }
     }
 
-    pub async fn capture_loop(ctx: egui::Context, tx: tokio::sync::watch::Sender<Option<((), SendableMat)>>) {
-        loop {
+    pub async fn capture_loop(ctx: egui::Context, tx: tokio::sync::watch::Sender<Option<((), SendableMat)>>, capture_enable: Arc<AtomicBool>) {
+        while capture_enable.load(std::sync::atomic::Ordering::Relaxed) {
             let mut cam = VideoCapture::new(0, opencv::videoio::CAP_ANY).unwrap();
 
             cam.set(VideoCaptureProperties::CAP_PROP_FRAME_WIDTH as i32, 3840.0).unwrap();
@@ -65,30 +60,34 @@ impl AsyncDetector {
             let mut frame = Mat::default();
     
             opencv::imgproc::resize(&cropped_mat, &mut frame, opencv::core::Size::new(2048, 2048), 0.0, 0.0, INTER_LINEAR).unwrap();
-            
+
             ctx.request_repaint();
-            tx.send(Some(((), SendableMat(frame.clone())))).unwrap();
+
+            let _ = tx.send(Some(((), SendableMat(frame.clone()))));
         }
     }
 
-    async fn load_async(tx: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>, mut rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>, mut model: DNNModel) {
+    async fn load_async(context: ApplicationContext, tx: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>, mut rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>, mut model: DNNModel) {
         if let Some(matrix) = rx_capture.borrow_and_update().as_ref() {
-            let detections = model.detect(&matrix.1.0, 0.6, 0.45).unwrap();
-            //println!("Computed until render");
+            let threshold: f32 = match context.threshold.parse() {
+                Ok(val) => val,
+                Err(_) => context.threshold_default.parse().unwrap(),
+            };
+
+            let detections = model.detect(&matrix.1.0, threshold, context.suppression, context.filter_confidence).unwrap();
+            
             tx.send(Some((detections, matrix.1.clone()))).unwrap();
         }
-        //println!("Computed until detect");
     }
 
-    pub fn load(&mut self, rt: &tokio::runtime::Runtime, rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>, tx_detections: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>) -> Option<&JoinHandle<()>> {
+    pub fn load(&mut self, context: ApplicationContext, rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>, tx_detections: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>) -> Option<&JoinHandle<()>> {
         if let Some(handle) = &self.handle {
             if !handle.is_finished() {
                 return None;
             }
         }
 
-        self.handle = Some(rt.spawn(AsyncDetector::load_async(tx_detections, rx_capture, self.model.clone())));
-
+        self.handle = Some(tokio::spawn(AsyncDetector::load_async(context, tx_detections, rx_capture, self.model.clone())));
         self.handle.as_ref()
     }
 
@@ -101,7 +100,9 @@ impl AsyncDetector {
     }
 
     pub fn kill(&mut self) {
-        self.handle.as_ref().unwrap().abort()
+        if let Some(handle) = self.handle.as_ref() {
+            handle.abort();
+        }   
     }
 
 }

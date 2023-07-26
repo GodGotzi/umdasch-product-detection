@@ -1,12 +1,13 @@
 
+use std::sync::{atomic::AtomicBool, Arc};
+
 use crate::{
     gui, monitor::{
         async_detector::{AsyncDetector, SendableMat}, MonitorHandler, data::ImageDetections, 
-    }
+    }, product::ProductServer
 };
 
 use eframe::CreationContext;
-use tokio::runtime::Runtime;
 
 pub struct CaptureContainer {
     tx_capture: tokio::sync::watch::Sender<Option<((), SendableMat)>>, 
@@ -36,30 +37,33 @@ impl CaptureContainer {
 
 #[allow(unused)]
 pub struct ProductDetectionApplication {
-    pub _context: ApplicationContext,
+    pub context: ApplicationContext,
     pub monitor_handler: MonitorHandler,
     pub async_detector: AsyncDetector,
-    pub tokio_runtime: Runtime,
+    pub product_server: ProductServer,
     tx_detections: tokio::sync::mpsc::UnboundedSender<Option<(ImageDetections, SendableMat)>>,
-    rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>
+    rx_capture: tokio::sync::watch::Receiver<Option<((), SendableMat)>>,
+    capture_enable: Arc<AtomicBool>
 }
 
 impl ProductDetectionApplication {
 
-    pub fn new(rt: Runtime, detector: AsyncDetector, cc: &CreationContext, container: CaptureContainer) -> Self {
-        rt.spawn(AsyncDetector::capture_loop(cc.egui_ctx.clone(), container.tx_capture));
+    pub fn new(detector: AsyncDetector, cc: &CreationContext, container: CaptureContainer, product_server: ProductServer) -> Self {
+        let capture_enable = Arc::new(AtomicBool::new(true));
+        
+        tokio::spawn(AsyncDetector::capture_loop(cc.egui_ctx.clone(), container.tx_capture, capture_enable.clone()));
 
         let monitor = MonitorHandler::new(container.rx_capture.clone(), container.rx_detection);
-        
+
         Self {
-            _context: ApplicationContext::default(),
+            context: ApplicationContext::default(),
             monitor_handler: monitor,
             async_detector: detector,
-            tokio_runtime: rt,
+            product_server: product_server,
             tx_detections: container.tx_detection,
-            rx_capture: container.rx_capture
+            rx_capture: container.rx_capture,
+            capture_enable
         }
-    
     }
 
 }
@@ -67,12 +71,7 @@ impl ProductDetectionApplication {
 impl ProductDetectionApplication {
 
     pub fn reload(&mut self) {
-        let handle = self.async_detector.load(&self.tokio_runtime, self.rx_capture.clone(), self.tx_detections.clone());
-
-        match handle {
-            Some(_) => println!("Detection Started!"),
-            None => println!("Detection already started/last Detection not finished"),
-        }
+        self.async_detector.load(self.context.clone(), self.rx_capture.clone(), self.tx_detections.clone());
     }
 
 }
@@ -92,16 +91,33 @@ impl eframe::App for ProductDetectionApplication {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.async_detector.kill();
         self.monitor_handler.kill();
+        self.capture_enable.store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
     fn on_close_event(&mut self) -> bool {
         self.async_detector.kill();
         self.monitor_handler.kill();
+        self.capture_enable.store(false, std::sync::atomic::Ordering::Relaxed);
 
         true
     }
 
 }
 
-#[derive(Default)]
-pub struct ApplicationContext;
+#[derive(Clone)]
+pub struct ApplicationContext {
+    pub threshold: String,
+    pub threshold_default: String,
+    pub suppression: bool,
+    pub filter_confidence: bool,
+    pub stereo: bool,
+}
+
+impl Default for ApplicationContext {
+
+    fn default() -> Self {
+        Self { threshold: "0.1".into(), threshold_default: "0.1".into(), suppression: true, filter_confidence: true, stereo: false }        
+    }
+
+}
+

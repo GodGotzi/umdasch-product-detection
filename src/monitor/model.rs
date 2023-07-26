@@ -1,4 +1,6 @@
 
+use std::collections::HashMap;
+
 use opencv::{
     core::{copy_make_border, Scalar, BORDER_CONSTANT, CV_32F},
     dnn::read_net_from_onnx,
@@ -6,14 +8,12 @@ use opencv::{
     Error,
 };
 
-use tracing::info;
-
 use super::data::*;
 
 
-fn iou(a: &Detection, b: &Detection) -> f32 {
-    let area_a = a.area();
-    let area_b = b.area();
+fn _iou(a: &Detection, b: &Detection) -> f32 {
+    let area_a = a._area();
+    let area_b = b._area();
 
     let top_left = (a.x.max(b.x), a.y.max(b.y));
     let bottom_right = (a.x + a.width.min(b.width), a.y + a.height.min(b.height));
@@ -25,27 +25,20 @@ fn iou(a: &Detection, b: &Detection) -> f32 {
 }
 
 
-fn non_max_suppression(detections: Vec<Detection>, nms_threshold: f32) -> Vec<Detection> {
-    let mut suppressed_detections: Vec<Detection> = vec![];
+fn suppression_fn(detections: Vec<Detection>) -> Vec<Detection> {
+    let mut suppressed_detections: HashMap<u32, Detection> = HashMap::new();
     let mut sorted_detections: Vec<Detection> = detections.to_vec();
 
     sorted_detections.sort_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap());
     sorted_detections.reverse();
 
-    for i in 0..sorted_detections.len() {
-        let mut keep = true;
-        for j in 0..i {
-            let iou = iou(&sorted_detections[i], &sorted_detections[j]);
-            if iou > nms_threshold {
-                keep = false;
-                break;
-            }
-        }
-        if keep {
-            suppressed_detections.push(sorted_detections[i].clone());
+    for sorted_detection in sorted_detections.iter() {
+        if !suppressed_detections.contains_key(&sorted_detection.class_index) {
+            suppressed_detections.insert(sorted_detection.class_index, sorted_detection.clone());
         }
     }
-    suppressed_detections
+
+    suppressed_detections.values().into_iter().map(|detection| detection.clone()).collect()
 }
 
 /// Filter detections by confidence.
@@ -74,7 +67,6 @@ impl DNNModel {
         input_size: (i32, i32),
     ) -> Result<Self, Error> {
         let cuda_count = opencv::core::get_cuda_enabled_device_count()?;
-        info!("CUDA enabled device count: {}", cuda_count);
 
         if cuda_count > 0 {
             network.set_preferable_backend(opencv::dnn::DNN_BACKEND_CUDA)?;
@@ -150,6 +142,7 @@ impl DNNModel {
                 height,
                 class_index: max_index as u32,
                 confidence: *sc,
+                color: Scalar::new(0.0, 255.0, 255.0, 1.0)
             })
         }
 
@@ -161,7 +154,8 @@ impl DNNModel {
         &mut self,
         frame: &Mat,
         minimum_confidence: f32,
-        nms_threshold: f32,
+        suppression: bool,
+        filter_conf: bool
     ) -> Result<ImageDetections, Error> {
         // Load the image
         let mat = self.load_capture(frame)?;
@@ -170,13 +164,20 @@ impl DNNModel {
         let result = self.forward(&mat)?;
 
         // Convert the result to a Vec of Detections.
-        let detections = self.convert_to_detections(&result)?;
+        let mut detections = self.convert_to_detections(&result)?;
 
         // Filter the detections by confidence.
-        let detections = filter_confidence(detections, minimum_confidence);
+
+        if filter_conf {
+            detections = filter_confidence(detections, minimum_confidence);
+        }
+
+        if suppression {
+            detections = suppression_fn(detections);
+        }
 
         // Non-maximum suppression.
-        let detections = non_max_suppression(detections, nms_threshold);
+        //let detections = suppression(detections);
 
         Ok(ImageDetections {
             detections,

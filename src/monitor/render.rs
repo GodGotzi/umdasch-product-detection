@@ -8,15 +8,16 @@ use opencv::{
 
 use opencv::core::{Rect, Point};
 
+use crate::product::ProductServer;
 use super::data::ImageDetections;
 
-const FONT_SCALE: f64 = 0.5;
+const FONT_SCALE: f64 = 0.25;
 const FONT_FACE: i32 = FONT_HERSHEY_SIMPLEX;
 const THICKNESS: i32 = 1;
 
 const BLACK: Scalar  = Scalar::new(0.0, 0.0, 0.0, 1.0);
 const _BLUE: Scalar = Scalar::new(255.0, 178.0, 50.0, 1.0);
-const YELLOW: Scalar = Scalar::new(0.0, 255.0, 255.0, 1.0);
+const _YELLOW: Scalar = Scalar::new(0.0, 255.0, 255.0, 1.0);
 const WHITE: Scalar = Scalar::new(255.0, 255.0, 255.0, 1.0);
 
 fn draw_label(img: &mut Mat, label: &str, left: i32, native_top: i32) -> Result<(), Error> {
@@ -42,7 +43,7 @@ fn draw_label(img: &mut Mat, label: &str, left: i32, native_top: i32) -> Result<
     Ok(())
 }
 
-pub fn render_detections(img: &mut Mat, size: opencv::core::Size, detections: &ImageDetections) -> Result<(), Error> {
+pub fn render_detections(img: &mut Mat, size: opencv::core::Size, product_server: &ProductServer, detections: &ImageDetections) -> Result<(), Error> {
 
     for detection in detections.detections.iter() {
         
@@ -53,11 +54,14 @@ pub fn render_detections(img: &mut Mat, size: opencv::core::Size, detections: &I
 
         let rect = Rect::new(x as i32, y as i32, width as i32, height as i32);
 
-        println!("{:?}", rect);
+        rectangle(img, rect, detection.color, THICKNESS, LineTypes::LINE_4 as i32, 0)?;
 
-        rectangle(img, rect, YELLOW, 3*THICKNESS, LineTypes::LINE_4 as i32, 0)?;
+        let product = match (detection.class_index as usize) < product_server.len() {
+            true => product_server.get_by_id(detection.class_index as usize).name.as_str(),
+            false => "Unkown".into(),
+        };
 
-        let label: String = format!("{} | Conf: {:.3}", detection.class_index, detection.confidence);
+        let label: String = format!("{} | {:.3}", product, detection.confidence);
         draw_label(img, label.as_str(), x as i32, y as i32)?;
     }
 

@@ -33,38 +33,50 @@ pub fn show_top_panel(ctx: &egui::Context) {
 
 pub fn show_main_panel(app: &mut ProductDetectionApplication, ctx: &egui::Context, frame: &mut eframe::Frame) {
     show_training_panel(app, ctx, frame);
-    show_terminal_panel(app, ctx, frame);
 
     utils::with_heading_panel("Detection", ctx);
     show_detection_panel(app, ctx, frame);
+    show_terminal_panel(app, ctx, frame);
 
     egui::CentralPanel::default().show(ctx, |ui| {
-        let size = match app.monitor_handler.detection.get_image() {
-            Some(_) => opencv::core::Size::new((ui.available_width() as f32 / 2.0) as i32, (ui.available_height() as f32 / 2.0) as i32),
-            None => opencv::core::Size::new(ui.available_width() as i32, ui.available_height() as i32),
+        let size = match app.monitor_handler.detection.is_bundle_arrived() {
+            true => opencv::core::Size::new((ui.available_width() as f32 / 2.0) as i32, ui.available_height() as i32),
+            false => opencv::core::Size::new(ui.available_width() as i32, ui.available_height() as i32),
         };
 
         app.monitor_handler.capture
-            .resize(size.clone(), &app.tokio_runtime);
+            .resize(size.clone());
 
         app.monitor_handler.detection
-            .resize(size.clone(), &app.tokio_runtime);
+            .resize(size.clone(), &app.product_server);
 
         if app.monitor_handler.capture.get_image().is_some() && app.monitor_handler.detection.get_image().is_none() {
             let img = app.monitor_handler.capture.get_image().unwrap();
 
-            ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::RightToLeft), |ui| {
+            ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::LeftToRight), |ui| {
                 ui.image(img.texture_id(ctx), Vec2::new(img.width() as f32, img.height() as f32));
             });
         } else if app.monitor_handler.capture.get_image().is_some() && app.monitor_handler.detection.get_image().is_some() {
-            let capture_img = app.monitor_handler.capture.get_image().unwrap();
-            let detection_img = app.monitor_handler.detection.get_image().unwrap();
+            GridBuilder::new()
+                .new_row_align(Size::remainder(), egui::Align::Center)
+                .cell(Size::remainder())
+                .cell(Size::remainder())
+                .show(ui, |mut grid| {
+                    grid.cell(|ui| {
+                        let img = app.monitor_handler.capture.get_image().unwrap();
 
-            ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::RightToLeft), |ui| {
-                ui.label("test");
-                ui.image(capture_img.texture_id(ctx), Vec2::new(capture_img.width() as f32, capture_img.height() as f32));
-                ui.image(detection_img.texture_id(ctx), Vec2::new(detection_img.width() as f32, detection_img.height() as f32));
-            });
+                        ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::LeftToRight), |ui| {
+                            ui.image(img.texture_id(ctx), Vec2::new(img.width() as f32, img.height() as f32));
+                        });
+                    });
+                    grid.cell(|ui| {
+                        let img = app.monitor_handler.detection.get_image().unwrap();
+
+                        ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::LeftToRight), |ui| {
+                            ui.image(img.texture_id(ctx), Vec2::new(img.width() as f32, img.height() as f32));
+                        });
+                    });
+                });
         }
 
     });
@@ -74,7 +86,7 @@ pub fn show_main_panel(app: &mut ProductDetectionApplication, ctx: &egui::Contex
 //fn calculate_expansion(ctx)
 
 fn show_training_panel(app: &mut ProductDetectionApplication, ctx: &egui::Context, frame: &mut eframe::Frame) {
-    let exp = frame.info().window_info.size.x * 0.225;
+    let exp = frame.info().window_info.size.x * 0.2;
 
     egui::SidePanel::left("training-panel")
         .exact_width(exp)
@@ -87,7 +99,7 @@ fn show_training_panel(app: &mut ProductDetectionApplication, ctx: &egui::Contex
 }
 
 fn show_terminal_panel(app: &mut ProductDetectionApplication, ctx: &egui::Context, frame: &mut eframe::Frame) {
-    let exp = frame.info().window_info.size.y * 0.2;
+    let exp = frame.info().window_info.size.y * 0.35;
     
     egui::TopBottomPanel::bottom("terminal-panel")
         .exact_height(exp)
@@ -99,13 +111,13 @@ fn show_terminal_panel(app: &mut ProductDetectionApplication, ctx: &egui::Contex
 }
 
 fn show_detection_panel(app: &mut ProductDetectionApplication, ctx: &egui::Context, frame: &mut eframe::Frame) {
-    let exp = frame.info().window_info.size.x  * 0.225;
+    let exp = frame.info().window_info.size.x  * 0.2;
 
     egui::SidePanel::right("detection-panel")
         .exact_width(exp)
         .resizable(false)
         .show(ctx, |ui| {
-            detection::show(app, ui);
+            detection::show(app, ui, frame);
         });
 }
 

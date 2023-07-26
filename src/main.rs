@@ -1,28 +1,24 @@
 use application::{ProductDetectionApplication, CaptureContainer};
 
 use monitor::{async_detector::{AsyncDetector, SendableMat}, data::ImageDetections};
-use tokio::runtime;
+use product::ProductServer;
 
 mod gui;
 mod application;
 mod monitor;
+mod product;
 
 #[tokio::main]
 async fn main() -> Result<(), eframe::Error> {
-
-    let (num_tokio_worker_threads, max_tokio_blocking_threads) = (num_cpus::get(), 512); // 512 is tokio's current default
     //println!("{}", num_tokio_worker_threads);
-    let rt = runtime::Builder::new_multi_thread()
-        .enable_all()
-        .thread_stack_size(8 * 1024 * 1024)
-        .worker_threads(num_tokio_worker_threads)
-        .max_blocking_threads(max_tokio_blocking_threads)
-        .build().unwrap();
     
     let (tx_capture, rx_capture) = tokio::sync::watch::channel::<Option<((), SendableMat)>>(None);
     let (tx_detections, rx_detections) = tokio::sync::mpsc::unbounded_channel::<Option<(ImageDetections, SendableMat)>>();
 
     let container = CaptureContainer::new(tx_capture, rx_capture, tx_detections, rx_detections);
+
+    let mut product_server = ProductServer::new("products/".into());
+    product_server.load().unwrap();
 
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     let options = eframe::NativeOptions {
@@ -35,7 +31,7 @@ async fn main() -> Result<(), eframe::Error> {
         "Umdasch - Product Detection Application",
         options,
         Box::new(move |cc| {
-            Box::new(ProductDetectionApplication::new(rt, AsyncDetector::new(), cc, container))
+            Box::new(ProductDetectionApplication::new(AsyncDetector::new(), cc, container, product_server))
         }
     )).unwrap();
 

@@ -6,7 +6,9 @@ use egui::ColorImage;
 use egui_extras::RetainedImage;
 use image::ImageBuffer;
 use opencv::{core::{Size, Point3_}, prelude::{Mat, MatTraitConst}, imgproc::INTER_LINEAR};
-use tokio::{task::JoinHandle, runtime::Runtime};
+use tokio::task::JoinHandle;
+
+use crate::product::ProductServer;
 
 use self::{data::ImageDetections, async_detector::SendableMat};
 
@@ -58,26 +60,29 @@ pub fn resize_capture(_: &(), matrix: &SendableMat, size: Size) -> RetainedImage
         image::Rgba([color.z, color.y, color.x, 255])
     });
 
-    let img = 
+    let mut img = 
         image::imageops::resize(
             &img,
             min as u32,
             min as u32,
             image::imageops::FilterType::Nearest);
 
+    img = image::imageops::flip_vertical(&img);
+    img = image::imageops::rotate90(&img);
+
     let color_img = ColorImage::from_rgba_premultiplied([img.dimensions().0 as usize, img.dimensions().1 as usize], &img);
     
     RetainedImage::from_color_image("detection-img", color_img)
 }
 
-pub fn resize_detection(detections: &ImageDetections, matrix: &SendableMat, size: Size) -> RetainedImage {
+pub fn resize_detection(detections: &ImageDetections, matrix: &SendableMat, size: Size, product_server: ProductServer) -> RetainedImage {
     let min = std::cmp::min(size.width, size.height);
 
     let mut new_matrix = Mat::default();
 
     opencv::imgproc::resize(&matrix.0, &mut new_matrix, opencv::core::Size::new(min, min), 0.0, 0.0, INTER_LINEAR).unwrap();
     
-    render::render_detections(&mut new_matrix, opencv::core::Size::new(min, min), &detections).unwrap();
+    render::render_detections(&mut new_matrix, opencv::core::Size::new(min, min), &product_server, &detections).unwrap();
 
     //println!("Image buffer creation");
     let img: ImageBuffer<image::Rgba<u8>, Vec<u8>> = ImageBuffer::from_fn(min as u32, min as u32, |x, y| {
@@ -85,12 +90,15 @@ pub fn resize_detection(detections: &ImageDetections, matrix: &SendableMat, size
         image::Rgba([color.z, color.y, color.x, 255])
     });
 
-    let img = 
+    let mut img = 
         image::imageops::resize(
             &img,
             min as u32,
             min as u32,
             image::imageops::FilterType::Nearest);
+
+    img = image::imageops::flip_vertical(&img);
+    img = image::imageops::rotate90(&img);
 
     let color_img = ColorImage::from_rgba_premultiplied([img.dimensions().0 as usize, img.dimensions().1 as usize], &img);
 
@@ -103,13 +111,13 @@ pub struct ImageSubscriberDetection<T> {
     image: Option<RetainedImage>,
     image_resize_handle: Option<JoinHandle<()>>,
     image_receiver: Option<tokio::sync::oneshot::Receiver<RetainedImage>>,
-    resize_fn: fn(ctx: &T, mat: &SendableMat, size: Size) -> RetainedImage,
+    resize_fn: fn(ctx: &T, mat: &SendableMat, size: Size, product_server: ProductServer) -> RetainedImage,
     resizing: bool
 }
 
 impl <T: Sync + Send + Clone + 'static> ImageSubscriberDetection<T> {
 
-    pub fn new(matrix_receiver: tokio::sync::mpsc::UnboundedReceiver<Option<(T, SendableMat)>>, resize_fn: fn(ctx: &T, mat: &SendableMat, size: Size) -> RetainedImage) -> Self {
+    pub fn new(matrix_receiver: tokio::sync::mpsc::UnboundedReceiver<Option<(T, SendableMat)>>, resize_fn: fn(ctx: &T, mat: &SendableMat, size: Size, product_server: ProductServer) -> RetainedImage) -> Self {
         Self { matrix_receiver: matrix_receiver, matrix_bundle: None, image: None, image_resize_handle: None, image_receiver: None, resize_fn: resize_fn, resizing: false }
     }
 
@@ -118,38 +126,48 @@ impl <T: Sync + Send + Clone + 'static> ImageSubscriberDetection<T> {
         let mut ctx = std::task::Context::from_waker(&waker);
 
         if let Poll::Ready(Some(bundle)) = self.matrix_receiver.poll_recv(&mut ctx) {
-            println!("Yes");
             if let Some(bundle) = bundle.as_ref() {
                 self.matrix_bundle = Some((bundle.0.clone(), bundle.1.clone()));
             }
-    
-            if let Some(receiver) = self.image_receiver.as_mut() {
-                println!("aha");
-                if let Ok(image) = receiver.try_recv() {
-                    self.image = Some(image);
+        }
 
-                    self.image_receiver = None;
-                    self.image_resize_handle = None;
-                    self.resizing = false;
-                }
+        if let Some(receiver) = self.image_receiver.as_mut() {
+            if let Ok(image) = receiver.try_recv() {
+                self.image = Some(image);
+
+                self.image_receiver = None;
+                self.image_resize_handle = None;
+                self.resizing = false;
             }
         }
 
+    }
+
+    pub fn get_detections(&self) -> Option<&T> {
+        if let Some(bundle) = self.matrix_bundle.as_ref() {
+            return Some(&bundle.0);
+        }
+
+        None
+    }
+
+    pub fn is_bundle_arrived(&self) -> bool {
+        self.matrix_bundle.is_some()
     }
 
     pub fn get_image(&self) -> Option<&RetainedImage> {
         self.image.as_ref()
     }
 
-    pub fn resize(&mut self, size: Size, rt: &Runtime) {
+    pub fn resize(&mut self, size: Size, product_server: &ProductServer) {
         if !self.resizing {
             if let Some(bundle) = self.matrix_bundle.as_ref() {
                 self.resizing = true;
 
                 let (tx, rx) = tokio::sync::oneshot::channel();
     
-                self.image_resize_handle = Some(rt.spawn(
-                    ImageSubscriberDetection::<T>::async_resize(bundle.0.clone(), bundle.1.clone(), size, self.resize_fn.clone(), tx))
+                self.image_resize_handle = Some(tokio::spawn(
+                    ImageSubscriberDetection::<T>::async_resize(bundle.0.clone(), bundle.1.clone(), size, product_server.clone(), self.resize_fn.clone(), tx))
                 );
     
                 self.image_receiver = Some(rx);
@@ -157,8 +175,8 @@ impl <T: Sync + Send + Clone + 'static> ImageSubscriberDetection<T> {
         }
     }
 
-    async fn async_resize(ctx: T, matrix: SendableMat, size: Size, resize_fn: fn(ctx: &T, mat: &SendableMat, size: Size) -> RetainedImage, tx: tokio::sync::oneshot::Sender<RetainedImage>) {
-        let image = resize_fn(&ctx, &matrix, size);
+    async fn async_resize(ctx: T, matrix: SendableMat, size: Size, product_server: ProductServer, resize_fn: fn(ctx: &T, mat: &SendableMat, size: Size, product_server: ProductServer) -> RetainedImage, tx: tokio::sync::oneshot::Sender<RetainedImage>) {
+        let image = resize_fn(&ctx, &matrix, size, product_server);
 
         if let Err(_) = tx.send(image) { }
     }
@@ -202,14 +220,14 @@ impl <T: Sync + Send + Clone + 'static> ImageSubscriberCapture<T> {
         self.image.as_ref()
     }
 
-    pub fn resize(&mut self, size: Size, rt: &Runtime) {
+    pub fn resize(&mut self, size: Size) {
         if !self.resizing {
             if let Some(bundle) = self.matrix_bundle.as_ref() {
                 self.resizing = true;
 
                 let (tx, rx) = tokio::sync::oneshot::channel();
     
-                self.image_resize_handle = Some(rt.spawn(
+                self.image_resize_handle = Some(tokio::spawn(
                     ImageSubscriberCapture::<T>::async_resize(bundle.0.clone(), bundle.1.clone(), size, self.resize_fn.clone(), tx))
                 );
     

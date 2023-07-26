@@ -1,6 +1,6 @@
 train: ../data/images/training/
 val: ../data/images/validation
 
-nc: 1
+nc: 13
 
-names: ['PRODUCT01']
+names: ['5013100', '5014201', '6616519', '7051436', '7069621-624_-_Default', '7069625', '7069626-628_-_Default', '7069629', '7069630-632_-_Default', '7069633', '7069635', '7069637', '7098285']
